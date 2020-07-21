@@ -1,3 +1,16 @@
+TO DO
+
+- introduction about methods, few formulas
+- algorithm presentation
+- generate data, comparison with "normal" histogram
+- application on spectrum
+- (prior studies)
+- (observation on high energy peak, try to fix that?)
+
+```{r}
+
+```
+
 Import data
 
 ```{r}
@@ -9,7 +22,6 @@ stop  <- 8191
 xs    <- c(start:stop)
 
 block_length <- stop - c(start, 0.5*(xs[2:length(xs)]+xs[1:length(xs)-1]), stop);
-norm_counts  <- data[,1]/n
 
 options(repr.plot.width=12, repr.plot.height=7)  #to set graph size
 
@@ -18,7 +30,7 @@ plot(block_length[length(block_length):2], data[,1], type='s', log='y')
 ```
 
 ```{r}
-
+library("pracma")
 ```
 
 Prior
@@ -41,15 +53,19 @@ nn_vec <- data[,1][idx:length(data[,1])]
 ```
 
 ```{r}
+
+```
+
+```{r}
 # ---------------------------------------------
 # Start with first data cell; add one cell at
 # each iteration
 # ---------------------------------------------
 best <- NULL 
 last <- NULL
+supp <- NULL
 
-for (R in 1:length(nn_vec)){
-
+for (R in 1:8192){
 # Compute fit_vec : fitness of putative last block (end at R)
     arg_log <- block_length[1:R] - block_length[R+1]
     arg_log[arg_log <= 0] <- Inf
@@ -59,18 +75,11 @@ for (R in 1:length(nn_vec)){
     
     fit_vec <- nn_cum_vec * (log(nn_cum_vec) - log(arg_log))
     
-    supp <- vapply(best, function(x){ x + fit_vec - ncp_prior}, numeric(R) )
-    print(supp)
-    best <- c(max(c(fit_vec - ncp_prior, supp)), best)                                   
-    print(best)
-    last <- c(which.max(c(fit_vec - ncp_prior, supp)),last)
-    print(last)
-}    
-```
+    supp <- c(0, best) + fit_vec - ncp_prior
 
-```{r}
-best
-last
+    best <- c(best, max(supp))
+    last <- c(last, which.max(supp))
+}    
 ```
 
 ```{r}
@@ -85,189 +94,49 @@ while (index > 1){
     change_points <- c(index, change_points)
     index <- last[index - 1]
 }
+change_points <- c(change_points, 8191)
 ```
 
 ```{r}
-
+change_points
 ```
 
 ```{r}
+#create histogram
 
-```
+rebin <- NULL
+y <- NULL
+n <- 1
 
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-# needed_packages <- c('lubridate', 'readxl', 'curl')
-# already_installed <- needed_packages %in% installed.packages()
-# for ( pack in needed_packages [! already_installed ]) {
-# message( paste("To be installed :", pack, sep =" "))
-# install.packages( pack )
-# }
-
-library ('lubridate')
-library ('readxl')
-library ('curl')
-
-url <- "https://www.ecdc.europa.eu/sites/default/files/documents/"
-fname <- "COVID-19-geographic-disbtribution-worldwide-"
-date <- lubridate::today() - 1
-ext = ".xlsx"
-target <- paste(url, fname, date, ext, sep="")
-message("target: ", target )
-tmp_file <- tempfile("data", "\\tmp", fileext =ext )
-tmp <- curl::curl_download( target, destfile=tmp_file )
-covid <- readxl::read_xlsx(tmp_file)
-covid
-```
-
-## Solution
-
-**1.** The loaded tibble `covid` has $10$ columns: data is classified by time (**dateRep**, **day**, **month**, **year** columns) and geographic area (**countriesAndTerritories**, **geoId**, **countryterritoryCode** columns). For each country, also the total population of 2018 (**popData2018**) is reported. Cases and deaths are reported daily in the columns **cases** and **deaths**. Data is sorted by geographic area in alphabetic order.
-
-```{r}
-head(covid)
-```
-
-```{r}
-apply ( apply (covid ,2,is.na), 2, sum)
-print("Missing countryterritoryCode")
-unique(covid[is.na(covid$countryterritoryCode)==TRUE,'countriesAndTerritories'])
-print("Missing popData2018")
-unique(covid[is.na(covid$popData2018)==TRUE,'countriesAndTerritories'])
-```
-
-There is some missing data: in particular, *Anguilla*, *Bonaire, Saint Eustatius and Saba*, *Czechia* and *Falkland_Islands_(Malvinas)* are missing the three letters geografic code and population number of 2018, and *Eritrea* only the latter. This information has been evaluated by using the function `is.na` and `unique` and by showing the two tibbles above.
-
-
-**2.** `tb_covid` is a sub-tibble of `covid` that contains data only of the last day, which is then ordered by number of cases and deaths in decreasing order. A further selection is applied to obtain a table with all the countries with number of deaths or number of new cases greater than 200.
-
-```{r}
-tb_covid <- covid[covid$dateRep==date,] #tibble with only yesterday's data
-tb_covid <- tb_covid[order(tb_covid$cases, tb_covid$deaths, decreasing=TRUE),] 
-tb_cov_200 <- tb_covid[(tb_covid$deaths >=200 | tb_covid$cases >=200), ]
-tb_cov_200[,c('countriesAndTerritories','geoId', 'deaths', 'cases')] 
-```
-
-**3.** The two-letters Id `geoId` is selected for the top 10 countries for number of cases in the last day and is put in the `states` vector. It will be used as a legend in the final plots.
-
-```{r}
-top10 <- tb_cov_200[1:10,]
-states <- top10$geoId
-states
-```
-
-To represent the number of deaths/cases as a function of time, the `cumsum` function is used. `na.omit` function is applied in order to avoid errors due to missing values, while `rev` is for putting the vectors in the correct order. 
-
-```{r}
-#total deaths
-library("RColorBrewer")
-colors <- brewer.pal(n = length(states), name = "Paired") #colors
-par(mgp=c(3, 0.5, 0))
-y_max <- 0
-
-for (i in 1:10){
-    ys <- cumsum(na.omit(rev(covid$deaths[covid$geoId==states[i]])))
-    xs <- as.Date(na.omit(rev(covid$dateRep[covid$geoId==states[i]])))
-    y_max <- max(ys, y_max)
-    plot(xs, ys, col=colors[i], pch=i, las=2,
-           xlim=c(as.Date("2020-02-28"),date), ylim=c(0,y_max+100),
-           xlab="", ylab="")
-    par(new=TRUE, xaxt='n', yaxt='n')
+for (i in 1:length(data[,1])){
+    y <- y + data[i,1]
+    ifelse( i %in% change_points,
+           {y <- y/n
+            rebin <- c(rebin, y)
+            y <- 0
+            n <- 1},
+            n <- n+1
+    )
 }
 
-legend('topleft', legend=states, col=colors, pch=c(1:10))
-        
-title(main="Number of deaths vs. time", cex.main=1.5,
-      xlab="Time [date]", ylab="Total number of deaths", cex.lab=1.5)
 ```
 
 ```{r}
-#total deaths
-colors <- brewer.pal(n = length(states), name = "Paired") #colors
-par(mgp=c(3, 0.5, 0))
-y_max <- 0
+plot(block_length[length(block_length):2], data[,1], col= 'red', type='s', log='y')
+lines(change_points, c(rebin, rebin[length(rebin)]), col='green', type='s')
 
-for (i in 1:10){
-    ys <- cumsum(na.omit(rev(covid$cases[covid$geoId==states[i]])))
-    xs <- as.Date(na.omit(rev(covid$dateRep[covid$geoId==states[i]])))
-    y_max <- max(ys, y_max)
-    plot(xs, ys, col=colors[i], pch=i, las=2,
-         xlim=c(as.Date("2020-02-28"),date), ylim=c(0,y_max+100),
-         xlab="", ylab="")
-    par(new=TRUE, xaxt='n', yaxt='n')
-}
-
-legend('topleft', legend=states, col=colors, pch=c(1:10))
-        
-title(main="Number of cases vs. time", cex.main=1.5,
-      xlab="Time [date]", ylab="Total number of cases", cex.lab=1.5)
-```
-
-In order to compare the different curves, a normalization is performed by translating curves of a time offset $t_0$, such that they have the same origin, obtaining the result below. A threshold of 10 cases/deaths is set to establish the starting of the epidemy and to choose the aforementioned offset $t_0$.
-
-```{r}
-#total cases
-colors <- brewer.pal(n = length(states), name = "Paired") #colors
-par(mgp=c(3, 0.5, 0))
-y_max <- 0
-x_max <- 0
-threshold <- 10 #set threshold for chosing t0
-
-for (i in 1:10){
-    y <- c()
-    x <- c()
-    y <- cumsum(na.omit(rev(covid$cases[covid$geoId==states[i]])))
-    x <- as.POSIXlt(na.omit(rev(covid$dateRep[covid$geoId==states[i]])))
-    t0 <- x[y>threshold][1]
-    xs <- difftime(x, t0, units="days")
-    x_max <- max(length(xs[y>threshold]), x_max)
-    y_max <- max(y, y_max)
-    plot(xs, log(y), col=colors[i], pch=i, las=2,
-         xlim= c(0, x_max), ylim=c(0,log(y_max+100)),
-         xlab="", ylab="")
-    par(new=TRUE, xaxt='n', yaxt='n')
-}
-
-legend('topleft', legend=states, col=colors, pch=c(1:10))
-title(main="Number of cases vs. normalized time", cex.main=1.5,
-      xlab="Time [days]", ylab="Total number of cases [logscale]", cex.lab=1.5)
+#plot(change_points, c(rebin, rebin[length(rebin)]), col='green', type='s')
 
 ```
 
 ```{r}
-#total cases
-colors <- brewer.pal(n = length(states), name = "Paired") #colors
-par(mgp=c(3, 0.5, 0))
-y_max <- 0
-x_max <- 0
-threshold <- 10 #set threshold for chosing t0
-
-for (i in 1:10){
-    y <- c()
-    x <- c()
-    y <- cumsum(na.omit(rev(covid$deaths[covid$geoId==states[i]])))
-    x <- as.POSIXlt(na.omit(rev(covid$dateRep[covid$geoId==states[i]])))
-    t0 <- x[y>threshold][1]
-    xs <- difftime(x, t0, units="days")
-    x_max <- max(length(xs[y>threshold]), x_max)
-    y_max <- max(y, y_max)
-    plot(xs, log(y), col=colors[i], pch=i, las=2,
-         xlim= c(0, x_max), ylim=c(0,log(y_max+100)),
-         xlab="", ylab="")
-    par(new=TRUE, xaxt='n', yaxt='n')
-}
-
-legend('topleft', legend=states, col=colors, pch=c(1:10))
-title(main="Number of deaths vs. normalized time", cex.main=1.5,
-      xlab="Time [days]", ylab="Total number of deaths [logscale]", cex.lab=1.5)
 
 ```
 
-For these last graphs, a logaritmic scale is chosen for the y-axis to improve the readability: in fact, shifting the curves such that they have the same origin causes an inevitable overlapping. Hence, the logscale could help in seeing which curves grow faster with respect to the others.
+```{r}
+
+```
+
+```{r}
+
+```
