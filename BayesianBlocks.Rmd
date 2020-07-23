@@ -1,11 +1,116 @@
+```{r}
+library("repr")
+options(warn=-1)# repr.plot.width=14, repr.plot.height=8) 
+```
+
 TO DO
 
 - introduction about methods, few formulas
 - algorithm presentation
 - generate data, comparison with "normal" histogram
 - application on spectrum
-- (prior studies)
-- (observation on high energy peak, try to fix that?)
+- different prior studies
+
+```{r}
+bayesian_blocks <- function(xs, prior=7.61, nn_vec=rep(1,length(xs))){
+    
+    
+    xs <- sort(xs)
+    begin <- xs[1]
+    end <- xs[length(xs)]
+    
+    xs <- xs[!(nn_vec==0)]
+    nn_vec <- nn_vec[!(nn_vec==0)]
+    
+    N <- length(xs)
+    start <- xs[1]
+    stop <- xs[N]
+  
+    blocks <- c(start, 0.5*(xs[2:N]+xs[1:N-1]), stop);
+    block_length <- stop - blocks
+    # ---------------------------------------------
+    # Start with first data cell; add one cell at
+    # each iteration
+    # ---------------------------------------------
+
+    best <- NULL 
+    last <- NULL
+    supp <- NULL
+    
+    for (R in 1:N){
+    # Compute fit_vec : fitness of putative last block (end at R)
+        arg_log <- block_length[1:R] - block_length[R+1]
+        #arg_log[arg_log <= 0] <- Inf
+
+        nn_cum_vec <- cumsum(nn_vec[R:1])
+        nn_cum_vec <- nn_cum_vec[R:1]
+        
+        fit_vec <- nn_cum_vec * (log(nn_cum_vec) - log(arg_log))
+        fit_vec <- fit_vec - prior
+        
+        supp <- c(0, best) + fit_vec
+        
+        best <- c(best, max(supp))
+        last <- c(last, which.max(supp))
+         
+}    
+    
+    #---------------------------------------------
+    # Now find changepoints by iteratively peeling off the last block
+    #---------------------------------------------
+    index <- last[N]
+
+    change_points <- NULL
+
+    while(index > 1){
+        change_points <- c(index, change_points)
+        index <- last[index - 1]
+    }
+    
+#     change_points <- c(change_points, blocks[1])
+    
+    return(c(begin, blocks[change_points], end))
+}
+```
+
+```{r}
+test <- c(rnorm(1000, 0, 1), rgamma(1000, 9, 2))
+test <- test[(test > -5) & (test < 10)]
+test <- sort(test)
+```
+
+```{r}
+cp_h <- bayesian_blocks(test, prior=7.61)
+cp_h
+```
+
+```{r}
+options(repr.plot.width=18, repr.plot.height=8) 
+par(mfrow=c(1,2))
+
+h_t  <- hist(test, breaks=200)
+
+h_bb <- hist(test, breaks=cp_h )
+
+```
+
+Prior studies
+
+The needed ncp_prior–p0 relationship is easily found by
+noting that the rates of correct and incorrect responses to
+fluctuations in simulated pure noise can be controlled by
+adjusting the value of ncp_prior. The procedure is: generate a
+synthetic pure noise time series; apply the algorithm for a range
+of ncp_prior; and select the smallest value that yields false
+detection frequency equal or less than the desired rate, such
+as 0.05. The values of ncp_prior determined in this way are
+averaged over a large number of realizations of the random data.
+The result depends on only the number of data points and the
+adopted value of p0:
+
+```{r}
+
+```
 
 ```{r}
 
@@ -14,41 +119,145 @@ TO DO
 Import data
 
 ```{r}
-data <- read.table("./Data/B19036_AmCsCo_20180316.dat", skip=2)
+data   <- read.table("./Data/B19036_AmCsCo_20180316.dat", skip=2)
+counts <- data[,1]
+bins   <- c(0:8191)
 
-n     <- sum(data[,1])
-start <- 0
-stop  <- 8191
-xs    <- c(start:stop)
+# Preliminary computation: start data at the first non-empty bin
 
-block_length <- stop - c(start, 0.5*(xs[2:length(xs)]+xs[1:length(xs)-1]), stop);
-
-options(repr.plot.width=12, repr.plot.height=7)  #to set graph size
-
-plot(block_length[length(block_length):2], data[,1], type='s', log='y')
-
+idx    <- which(counts >0)[1]
+counts <- counts[idx:length(counts)]
+bins   <- bins[idx:length(bins)]
 ```
 
 ```{r}
-library("pracma")
+options(repr.plot.width=6, repr.plot.height=4)  #to set graph size
+
+plot(bins, counts, type='s')#, xlim=c(6520,6545))
+
 ```
 
 Prior
 
 ```{r}
-ncp_prior <- 7.61
+ncp_prior <- c(1, 1.3, 2, 2.5, 3.2, 4)
+#ncp_prior <- 7.61
 
 ```
 
 Algorithm
 
 ```{r}
-# For data modes 1 and 2:
-# nn_vec is the array of cell populations.
-# Preliminary computation:
+#create histogram
 
-idx <- which(data[,1] >0)[1]
-nn_vec <- data[,1][idx:length(data[,1])]
+rebin_bb <- function(bins, counts, change_points){
+    
+    rebin <- NULL
+    y <- 0
+    dn <- bins[2]-bins[1]
+    n <- 1
+    
+    N <- length(bins)
+    start <- bins[1]
+    stop <- bins[N]
+
+    mids <- c(0.5*(bins[2:N]+bins[1:N-1]), stop)
+
+    for (i in 1:(length(counts))){
+        y <- y + (dn*counts[i])
+        ifelse( mids[i] %in% change_points,
+                {y <- y/n
+                 rebin <- c(rebin, y)
+                 y <- 0
+                 n <- 1},
+                 n <- n+1
+        )
+    }
+    return(rebin)
+}
+```
+
+```{r}
+#create histogram
+
+rebin_bb <- function(bins, counts, change_points){
+    
+    rebin <- NULL
+    y <- 0
+    dn <- bins[2]-bins[1]
+    
+    for (i in 1:(length(change_points)-1)){
+        ifelse( ( bins < change_points[i+1] ) & ( bins > change_points[i] ),
+               { y <- sum(counts[bins < change_points[i+1] & bins > change_points[i]])
+                 y <- y/(dn*length(counts[bins < change_points[i+1] & bins > change_points[i]]))
+                 rebin <- c(rebin, y)},
+               next
+            )
+    }
+    return(c(0,rebin,0))
+}
+```
+
+```{r}
+cp <- bayesian_blocks(xs = bins, prior=1, nn_vec = counts)
+rebin <- rebin_bb(bins = bins, counts = counts, change_points = cp)
+```
+
+```{r}
+plot(bins, counts, col= 'grey', 
+     type='s', lwd=0.1, log='y')
+lines(cp, rebin, type='s', col='red')
+#abline(v=cp, col='red')
+
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+par(mfrow=c(3,2), mar=c(3.5,3.5,0.5,0.5), oma=c(0.1,0.1,0.1,0.5), mgp=c(2.0,0.8,0))
+
+for(i in 1:length(ncp_prior)) {
+    cp <- bayesian_blocks(blocks = block_length, data = nn_vec, prior = ncp_prior[i])
+    h  <- rebin_bb(data = data[,1], change_points = cp)
+    plot(block_length[length(block_length):2], data[,1], col= 'grey', 
+         type='s', log='y', lwd=0.1, main=ncp_prior[i])
+    lines(cp, h, col='red', type='s', lwd=2)
+}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
 
 ```
 
@@ -65,7 +274,7 @@ best <- NULL
 last <- NULL
 supp <- NULL
 
-for (R in 1:8192){
+for (R in 1:8193){
 # Compute fit_vec : fitness of putative last block (end at R)
     arg_log <- block_length[1:R] - block_length[R+1]
     arg_log[arg_log <= 0] <- Inf
@@ -80,6 +289,10 @@ for (R in 1:8192){
     best <- c(best, max(supp))
     last <- c(last, which.max(supp))
 }    
+```
+
+```{r}
+last
 ```
 
 ```{r}
@@ -98,30 +311,6 @@ change_points <- c(change_points, 8191)
 ```
 
 ```{r}
-change_points
-```
-
-```{r}
-#create histogram
-
-rebin <- NULL
-y <- NULL
-n <- 1
-
-for (i in 1:length(data[,1])){
-    y <- y + data[i,1]
-    ifelse( i %in% change_points,
-           {y <- y/n
-            rebin <- c(rebin, y)
-            y <- 0
-            n <- 1},
-            n <- n+1
-    )
-}
-
-```
-
-```{r}
 plot(block_length[length(block_length):2], data[,1], col= 'red', type='s', log='y')
 lines(change_points, c(rebin, rebin[length(rebin)]), col='green', type='s')
 
@@ -134,9 +323,73 @@ lines(change_points, c(rebin, rebin[length(rebin)]), col='green', type='s')
 ```
 
 ```{r}
+bayesian_blocks <- function(blocks, data, prior=7.61){
+    
+    #data <- sort(data)
+    #N <- length(data)
+    
+    # ---------------------------------------------
+    # Start with first data cell; add one cell at
+    # each iteration
+    # ---------------------------------------------
+    
+    best <- NULL 
+    last <- NULL
+    supp <- NULL
 
+    for (R in 1:length(blocks)){
+    # Compute fit_vec : fitness of putative last block (end at R)
+        arg_log <- blocks[1:R] - blocks[R+1]
+        arg_log[arg_log <= 0] <- Inf
+        
+        nn_cum_vec <- cumsum(data[R:1])
+        nn_cum_vec <- nn_cum_vec[R:1]
+        
+        fit_vec <- nn_cum_vec * (log(nn_cum_vec) - log(arg_log))
+       
+        supp <- c(0, best) + fit_vec - prior
+        
+        best <- c(best, max(supp))
+        last <- c(last, which.max(supp))
+         
+}    
+
+    # #---------------------------------------------
+    # # Now find changepoints by iteratively peeling
+    # off the last block
+    # #---------------------------------------------
+    index <- last[length(data)]
+    change_points <- NULL
+
+    while(index > 1){
+        change_points <- c(index, change_points)
+        index <- last[index - 1]
+    }
+    
+    change_points <- c(change_points, blocks[1])
+    
+    return(change_points)
+}
 ```
 
 ```{r}
+#create histogram
 
+rebin_bb <- function(data, change_points){
+    rebin <- NULL
+    y <- NULL
+    n <- 1
+
+    for (i in 1:length(data)){
+        y <- y + data[i]
+        ifelse( i %in% change_points,
+               {y <- y/n
+                rebin <- c(rebin, y)
+                y <- 0
+                n <- 1},
+                n <- n+1
+        )
+    }
+    return(c(rebin, rebin[length(rebin)]))
+}
 ```
