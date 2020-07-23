@@ -85,12 +85,12 @@ cp_h
 ```
 
 ```{r}
-options(repr.plot.width=18, repr.plot.height=8) 
-par(mfrow=c(1,2))
+options(repr.plot.width=6, repr.plot.height=4) 
+#par(mfrow=c(1,2))
 
-h_t  <- hist(test, breaks=200)
+h_t  <- hist(test, breaks=200, freq=FALSE, col=rgb(0,0,1,0))
 
-h_bb <- hist(test, breaks=cp_h )
+h_bb <- hist(test, breaks=cp_h, freq=FALSE, col=rgb(1,0,0,0), add=TRUE)
 
 ```
 
@@ -109,6 +109,20 @@ The result depends on only the number of data points and the
 adopted value of p0:
 
 ```{r}
+ncp_prior <- function(p0, N){ 4 - log(73.53 * p0 * N^(-0.478))}
+
+p0 <- c(0.0001, 0.001, 0.01, 0.1)
+N  <- length(test)
+
+par(mfrow=c(1,2))
+
+for (i in 1:length(p0)){
+    cp <- bayesian_blocks(xs = test, prior=ncp_prior(p0[i], N))
+    h  <- hist(test, breaks=cp, freq=FALSE, plot=FALSE)
+    
+    plot(h_t)
+    plot(h, add=TRUE)
+}
 
 ```
 
