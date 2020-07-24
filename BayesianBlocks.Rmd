@@ -3,13 +3,7 @@ library("repr")
 options(warn=-1)# repr.plot.width=14, repr.plot.height=8) 
 ```
 
-TO DO
-
-- introduction about methods, few formulas
-- algorithm presentation
-- generate data, comparison with "normal" histogram
-- application on spectrum
-- different prior studies
+Algorithm
 
 ```{r}
 bayesian_blocks <- function(xs, prior=7.61, nn_vec=rep(1,length(xs))){
@@ -73,6 +67,8 @@ bayesian_blocks <- function(xs, prior=7.61, nn_vec=rep(1,length(xs))){
 }
 ```
 
+Test dataset
+
 ```{r}
 test <- c(rnorm(1000, 0, 1), rgamma(1000, 9, 2))
 test <- test[(test > -5) & (test < 10)]
@@ -94,19 +90,7 @@ h_bb <- hist(test, breaks=cp_h, freq=FALSE, col=rgb(1,0,0,0), add=TRUE)
 
 ```
 
-Prior studies
-
-The needed ncp_prior–p0 relationship is easily found by
-noting that the rates of correct and incorrect responses to
-fluctuations in simulated pure noise can be controlled by
-adjusting the value of ncp_prior. The procedure is: generate a
-synthetic pure noise time series; apply the algorithm for a range
-of ncp_prior; and select the smallest value that yields false
-detection frequency equal or less than the desired rate, such
-as 0.05. The values of ncp_prior determined in this way are
-averaged over a large number of realizations of the random data.
-The result depends on only the number of data points and the
-adopted value of p0:
+Test priors
 
 ```{r}
 ncp_prior <- function(p0, N){ 4 - log(73.53 * p0 * N^(-0.478))}
@@ -126,11 +110,7 @@ for (i in 1:length(p0)){
 
 ```
 
-```{r}
-
-```
-
-Import data
+Import "real" dataset 
 
 ```{r}
 data   <- read.table("./Data/B19036_AmCsCo_20180316.dat", skip=2)
@@ -159,37 +139,7 @@ ncp_prior <- c(1, 1.3, 2, 2.5, 3.2, 4)
 
 ```
 
-Algorithm
-
-```{r}
-#create histogram
-
-rebin_bb <- function(bins, counts, change_points){
-    
-    rebin <- NULL
-    y <- 0
-    dn <- bins[2]-bins[1]
-    n <- 1
-    
-    N <- length(bins)
-    start <- bins[1]
-    stop <- bins[N]
-
-    mids <- c(0.5*(bins[2:N]+bins[1:N-1]), stop)
-
-    for (i in 1:(length(counts))){
-        y <- y + (dn*counts[i])
-        ifelse( mids[i] %in% change_points,
-                {y <- y/n
-                 rebin <- c(rebin, y)
-                 y <- 0
-                 n <- 1},
-                 n <- n+1
-        )
-    }
-    return(rebin)
-}
-```
+Algorithm to rebin
 
 ```{r}
 #create histogram
@@ -228,182 +178,4 @@ lines(cp, rebin, type='s', col='red')
 
 ```{r}
 
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-par(mfrow=c(3,2), mar=c(3.5,3.5,0.5,0.5), oma=c(0.1,0.1,0.1,0.5), mgp=c(2.0,0.8,0))
-
-for(i in 1:length(ncp_prior)) {
-    cp <- bayesian_blocks(blocks = block_length, data = nn_vec, prior = ncp_prior[i])
-    h  <- rebin_bb(data = data[,1], change_points = cp)
-    plot(block_length[length(block_length):2], data[,1], col= 'grey', 
-         type='s', log='y', lwd=0.1, main=ncp_prior[i])
-    lines(cp, h, col='red', type='s', lwd=2)
-}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-# ---------------------------------------------
-# Start with first data cell; add one cell at
-# each iteration
-# ---------------------------------------------
-best <- NULL 
-last <- NULL
-supp <- NULL
-
-for (R in 1:8193){
-# Compute fit_vec : fitness of putative last block (end at R)
-    arg_log <- block_length[1:R] - block_length[R+1]
-    arg_log[arg_log <= 0] <- Inf
-    
-    nn_cum_vec <- cumsum(nn_vec[R:1])
-    nn_cum_vec <- nn_cum_vec[R:1]
-    
-    fit_vec <- nn_cum_vec * (log(nn_cum_vec) - log(arg_log))
-    
-    supp <- c(0, best) + fit_vec - ncp_prior
-
-    best <- c(best, max(supp))
-    last <- c(last, which.max(supp))
-}    
-```
-
-```{r}
-last
-```
-
-```{r}
-# #---------------------------------------------
-# # Now find changepoints by iteratively peeling
-# off the last block
-# #---------------------------------------------
-index <- last[length(nn_vec)]
-change_points <- NULL
-
-while (index > 1){
-    change_points <- c(index, change_points)
-    index <- last[index - 1]
-}
-change_points <- c(change_points, 8191)
-```
-
-```{r}
-plot(block_length[length(block_length):2], data[,1], col= 'red', type='s', log='y')
-lines(change_points, c(rebin, rebin[length(rebin)]), col='green', type='s')
-
-#plot(change_points, c(rebin, rebin[length(rebin)]), col='green', type='s')
-
-```
-
-```{r}
-
-```
-
-```{r}
-bayesian_blocks <- function(blocks, data, prior=7.61){
-    
-    #data <- sort(data)
-    #N <- length(data)
-    
-    # ---------------------------------------------
-    # Start with first data cell; add one cell at
-    # each iteration
-    # ---------------------------------------------
-    
-    best <- NULL 
-    last <- NULL
-    supp <- NULL
-
-    for (R in 1:length(blocks)){
-    # Compute fit_vec : fitness of putative last block (end at R)
-        arg_log <- blocks[1:R] - blocks[R+1]
-        arg_log[arg_log <= 0] <- Inf
-        
-        nn_cum_vec <- cumsum(data[R:1])
-        nn_cum_vec <- nn_cum_vec[R:1]
-        
-        fit_vec <- nn_cum_vec * (log(nn_cum_vec) - log(arg_log))
-       
-        supp <- c(0, best) + fit_vec - prior
-        
-        best <- c(best, max(supp))
-        last <- c(last, which.max(supp))
-         
-}    
-
-    # #---------------------------------------------
-    # # Now find changepoints by iteratively peeling
-    # off the last block
-    # #---------------------------------------------
-    index <- last[length(data)]
-    change_points <- NULL
-
-    while(index > 1){
-        change_points <- c(index, change_points)
-        index <- last[index - 1]
-    }
-    
-    change_points <- c(change_points, blocks[1])
-    
-    return(change_points)
-}
-```
-
-```{r}
-#create histogram
-
-rebin_bb <- function(data, change_points){
-    rebin <- NULL
-    y <- NULL
-    n <- 1
-
-    for (i in 1:length(data)){
-        y <- y + data[i]
-        ifelse( i %in% change_points,
-               {y <- y/n
-                rebin <- c(rebin, y)
-                y <- 0
-                n <- 1},
-                n <- n+1
-        )
-    }
-    return(c(rebin, rebin[length(rebin)]))
-}
 ```
